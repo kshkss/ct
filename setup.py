@@ -49,8 +49,6 @@ if find_in_path('swig', os.environ['PATH']):
 else:
     raise EnvironmentError('the swig executable was not found in your PATH')
 
-
-
 def customize_compiler_for_nvcc(self):
     """inject deep into distutils to customize how the dispatch
     to gcc/nvcc works.
@@ -110,6 +108,7 @@ ext_modules = Extension('ct',
 setup(
     ext_modules=ext_modules,
     cmdclass = {'build_ext': custom_build_ext},
+    py_modules = ['fbp']
     scripts=['scripts/mean', 'scripts/recon'],
     python_requires='>=3.7, <4',
     install_requires=['numpy>=1.17'],
