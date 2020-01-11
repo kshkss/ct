@@ -8,10 +8,7 @@ NVFLAGS=-O2 -Xcompiler -fPIC
 
 LIBS=-lfftw3 -L/opt/cuda/lib64 -L/usr/local/cuda/lib64 -lcudart
 
-all: libct.so libmeanshift.so
-
-libmeanshift.so: meanshift.o
-	g++ -shared -o $@ $^
+all: libct.so
 
 libct.so: fbp.o iradonT.o misc.o
 	g++ -shared -o $@ $^ $(LIBS)
@@ -24,3 +21,4 @@ libct.so: fbp.o iradonT.o misc.o
 
 clean:
 	rm -f *.o *.so
+
