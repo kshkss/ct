@@ -9,16 +9,15 @@ import fbp
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-o", "--output", help="file name for output", default="ct")
-    parser.add_argument("-s", "--slice", help="specify slice number if you want a single ct", type=int)
-    parser.add_argument("-c", "--center", help="specify slice number if you want a single ct", type=float)
-    parser.add_argument("--i0", help="file name for i0 iamge", default="i0.tif")
-    parser.add_argument("--dark", help="file name for dark iamge", default="dark.tif")
+    parser.add_argument("-o", "--output", help="File or directory name for output", default="ct")
+    parser.add_argument("-s", "--slice", help="Specify slice number if you want a single ct", type=int)
+    parser.add_argument("-c", "--center", help="Specify slice number if you want a single ct", type=float)
+    parser.add_argument("--i0", help="File name for i0 image", default="i0.tif")
+    parser.add_argument("--dark", help="File name for dark image", default="dark.tif")
+    parser.add_argument("--px-size", help="Pixel size of the beam monitor", type=float)
+    parser.add_argument("--opposite", help="Use this flag to compute projections 180 to 360.", action='store_true')
     parser.add_argument("input_dir")
     args = parser.parse_args()
-
-    #print(args.input_dir)
-    #print(args.output)
 
     in_dir = args.input_dir
     out_dir = args.output
@@ -30,34 +29,38 @@ def main():
     assert (os.path.exists(i0_file) ), ("File does not exist: {}".format(i0_file))
     assert (os.path.exists(dark_file) ), ("File does not exist: {}".format(dark_file))
 
-    files = list(map(lambda f:
-            os.path.join(in_dir, f), os.listdir(in_dir)))
-    files.sort()
-
     dark = tiff.imread(dark_file).astype(np.float32)
-    i0 = np.log(tiff.imread(i0_file).astype(np.float32) - dark)
+    i0 = tiff.imread(i0_file).astype(np.float32)
 
-    images = tiff.imread(files).astype(np.float32)
+    files = os.listdir(in_dir)
+    files.sort()
+    print("Load projection data...")
+    images = np.stack([fbp.normalize(tiff.imread(os.path.join(in_dir, file_)).astype(np.float32), bg=i0, dark=dark) \
+            for file_ in tqdm(files)])
     n_angles, height, width = images.shape
 
-    print("normalize")
-    for i in tqdm(range(0, n_angles)):
-        images[i,:,:] = i0 - np.log(images[i,:,:] - dark)
+    tiff.imwrite("sino.tif", images[:,int(height/2),:], compress=6)
 
-    tiff.imwrite("sino.tif", images[:,int(height/2),:])
-
-    angles = (np.pi / float(n_angles)) * np.arange(0, n_angles, dtype=np.float32)
+    if args.opposite:
+        angles = (np.pi / float(n_angles)) * np.arange(0, n_angles, dtype=np.float32) + np.pi
+    else:
+        angles = (np.pi / float(n_angles)) * np.arange(0, n_angles, dtype=np.float32)
 
     if args.slice is not None:
         ct = fbp.run(images[:,args.slice,:].copy(), angles, center=args.center)
-        tiff.imwrite("{}_{}.tif".format(out_dir, args.slice), ct)
+        if args.px_size is not None:
+            ct = (10000 / args.px_size) * ct
+        tiff.imwrite("{}_{}.tif".format(out_dir, args.slice), ct, compress=6)
     else:
         if not os.path.exists(out_dir):
-            os.mkdir(out_dir)
-        print("reconstruct")
+            os.makedirs(out_dir)
+        print("ct reconstruction for {}:".format(out_dir))
         for i in tqdm(range(0, height)):
             ct = fbp.run(images[:,i,:].copy(), angles, center=args.center)
-            tiff.imwrite(os.path.join(out_dir, "a{:04d}.tif".format(i)), ct)
+            if args.px_size is not None:
+                ct = (10000 / args.px_size) * ct
+            tiff.imwrite(os.path.join(out_dir, "a{:04d}.tif".format(i)), ct.astype(np.float32), compress=6)
 
-main()
+if __name__ == '__main__':
+    main()
 
