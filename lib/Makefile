@@ -1,10 +1,10 @@
 PHONY.: all
 
 CXXINCLUDES=-I/usr/include -I. -I/opt/cuda/include -I/usr/local/cuda/include
-CXXFLAGS=-O2 -fPIC
+CXXFLAGS=-O2 -fPIC -std=c++11
 
 NVINCLUDES=-I/usr/include -I.
-NVFLAGS=-O2 -Xcompiler -fPIC
+NVFLAGS=-O2 -Xcompiler -fPIC -std=c++11
 
 LIBS=-lfftw3 -L/opt/cuda/lib64 -L/usr/local/cuda/lib64 -lcudart
 
