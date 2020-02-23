@@ -2,10 +2,43 @@
 
 import os
 import argparse
+from multiprocessing import Pool, cpu_count
 import numpy as np
 import tifffile as tiff
 from tqdm import tqdm
 import fbp
+
+def normalize_(args):
+    return fbp.normalize(args[0], bg=args[1], dark=args[2])
+
+def compute_ct(i, images, angles, center, px_size):
+    ct = fbp.run(images[:,i,:].copy(), angles, center=center)
+    if px_size is not None:
+        ct = (10000 / px_size) * ct
+    return ct
+
+def load_image_(args):
+    in_dir, file_ = args
+    return tiff.imread(os.path.join(in_dir, file_)).astype(np.float32)
+
+def load_images(in_dir, files):
+    with Pool(processes=min(8, cpu_count())) as pool:
+        with tqdm(total=len(files)) as bar:
+            args = [(in_dir, file_) for file_ in files]
+            return [bar.update(1) or img for img in pool.imap_unordered(load_image_, args)]
+
+def save_slice(out_dir, i, ct):
+    tiff.imwrite(os.path.join(out_dir, "a{:04d}.tif".format(i)), ct.astype(np.float32), compress=6)
+
+def save_slice_(args):
+    save_slice(*args)
+
+def save_volume(out_dir, slices):
+    with Pool(processes=min(8, cpu_count())) as pool:
+        with tqdm(total=len(slices)) as bar:
+            args = [(out_dir, i, slice_) for i, slice_ in enumerate(slices)]
+            for _ in pool.imap_unordered(save_slice_, args):
+                bar.update(1)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -35,8 +68,7 @@ def main():
     files = os.listdir(in_dir)
     files.sort()
     print("Load projection data...")
-    images = np.stack([fbp.normalize(tiff.imread(os.path.join(in_dir, file_)).astype(np.float32), bg=i0, dark=dark) \
-            for file_ in tqdm(files)])
+    images = np.stack([fbp.normalize(image, bg=i0, dark=dark) for image in tqdm(load_images(in_dir, files))])
     n_angles, height, width = images.shape
 
     tiff.imwrite("sino.tif", images[:,int(height/2),:], compress=6)
@@ -55,11 +87,9 @@ def main():
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
         print("ct reconstruction for {}:".format(out_dir))
-        for i in tqdm(range(0, height)):
-            ct = fbp.run(images[:,i,:].copy(), angles, center=args.center)
-            if args.px_size is not None:
-                ct = (10000 / args.px_size) * ct
-            tiff.imwrite(os.path.join(out_dir, "a{:04d}.tif".format(i)), ct.astype(np.float32), compress=6)
+        slices = [compute_ct(i, images, angles, args.center, args.px_size) for i in tqdm(range(height))]
+        print("Saving ct data...")
+        save_volume(out_dir, slices)
 
 if __name__ == '__main__':
     main()
